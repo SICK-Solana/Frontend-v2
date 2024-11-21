@@ -5,7 +5,6 @@ import BackendApi from '../../constants/api.ts';
 import fetchUserData from '../../constants/fetchUserData.ts';
 import Sidebar from '../../components/ui/sidebar.tsx';
 import SideBarPhone from '../../components/ui/sidebarPhone.tsx';
-import SignUpPopup from './SignUpPopup.tsx';
 import { MdDelete } from 'react-icons/md';
 import { useWallet } from "@solana/wallet-adapter-react"; 
 
@@ -53,11 +52,35 @@ const CrateCreator: React.FC = () => {
   const [totalAllocation, setTotalAllocation] = useState<number>(0);
   const [error, setError] = useState<string>('');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [showAuthPopup, setShowAuthPopup] = useState<boolean>(false);
 
   useEffect(() => {
     setTokens(tokenData);
     checkLoginStatus();
-  }, []);
+  }, [publicKey]);
+
+  const checkLoginStatus = async () => {
+    const creatorId = localStorage.getItem('creatorId');
+  
+    if (creatorId) {
+      setIsLoggedIn(true);
+    } else if (publicKey) {
+      try {
+        const user = await fetchUserData(publicKey.toString());
+        if (user) {
+          localStorage.setItem('creatorId', user.id);
+          setIsLoggedIn(true);
+        } else {
+          setShowAuthPopup(true);
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        setShowAuthPopup(true);
+      }
+    } else {
+      setShowAuthPopup(true);
+    }
+  };
 
   const distributeAllocations = (tokens: SelectedToken[]): SelectedToken[] => {
     const tokenCount = tokens.length;
@@ -71,8 +94,12 @@ const CrateCreator: React.FC = () => {
   };
 
   const handleTokenSelect = (selectedToken: Token) => {
+    if (!isLoggedIn) {
+      setShowAuthPopup(true);
+      return;
+    }
+
     if (selectedTokens.some(token => token.address === selectedToken.address)) {
-      // Token is already selected, don't add it again
       return;
     }
     const newSelectedTokens = [...selectedTokens, { ...selectedToken, allocation: 0 }];
@@ -103,27 +130,13 @@ const CrateCreator: React.FC = () => {
     setSelectedTokens(updatedTokens);
     setTotalAllocation(newSelectedTokens.length > 0 ? 100 : 0);
   };
-
-  const checkLoginStatus = async () => {
-    const creatorId = localStorage.getItem('creatorId');
-  
-    if (creatorId) {
-      setIsLoggedIn(true);
-    } else {
-      let user;
-        //@ts-nocheck
-        console.log(publicKey?.toString());
-        //@ts-nocheck
-         user = await fetchUserData(publicKey?.toString());
-      
-      if (user) {
-        localStorage.setItem('creatorId', user.id);
-        setIsLoggedIn(true);
-      }
-    }
-  };
   
   const handleCreateCrate = async () => {
+    if (!isLoggedIn) {
+      setShowAuthPopup(true);
+      return;
+    }
+
     if (totalAllocation !== 100) {
       setError('Total allocation must be 100%');
       return;
@@ -195,6 +208,29 @@ const CrateCreator: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-900 via-slate-800 to-gray-900 text-white">
+      {showAuthPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-8 rounded-xl border border-lime-500/30 max-w-md w-full mx-4">
+            <h2 className="text-2xl font-bold mb-4">Connect Your Wallet</h2>
+            <p className="text-gray-300 mb-6">Please connect your wallet to create and manage crates.</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowAuthPopup(false)}
+                className="px-4 py-2 bg-gray-700 rounded-lg mr-4 hover:bg-gray-600"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => window.location.href = '/'}
+                className="px-4 py-2 bg-lime-500 text-black rounded-lg hover:bg-lime-400"
+              >
+                Connect Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto p-8">
         <div className="mb-12">
           <div className="flex items-center gap-4 mb-6">
@@ -204,8 +240,6 @@ const CrateCreator: React.FC = () => {
           <h2 className="text-6xl font-semibold mb-4">Forge your own crate</h2>
           <p className="text-gray-400 text-xl">Create a custom token basket with your preferred allocations.</p>
         </div>
-
-        {!isLoggedIn && <SignUpPopup />}
 
         <div className="space-y-8">
           <input
